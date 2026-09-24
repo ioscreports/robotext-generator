@@ -421,8 +421,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-height: 420px;
+  max-height: min(70vh, 640px);
   overflow-y: auto;
+  padding-right: 2px;
 }
 
 .history-empty {
@@ -519,11 +520,63 @@ body {
   padding: 0.7rem 1rem;
   background: #eff6ff;
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.history-group-header:hover {
+  background: #dbeafe;
+}
+.history-group-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+.history-group-chevron {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: var(--primary);
+  transition: transform 0.2s ease;
+}
+.history-group.collapsed .history-group-chevron {
+  transform: rotate(-90deg);
+}
+.history-group.collapsed .history-group-header {
+  border-bottom: none;
+}
+.history-group.collapsed .history-group-body {
+  display: none;
+}
+.history-group-body {
+  max-height: 280px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.history-group-body::-webkit-scrollbar {
+  width: 6px;
+}
+.history-group-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+.history-group-body::-webkit-scrollbar-track {
+  background: #f1f5f9;
 }
 .history-group-title {
   font-weight: 700;
   font-size: 0.92rem;
   color: var(--primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .history-group-count {
   font-size: 0.78rem;
@@ -532,6 +585,7 @@ body {
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
   border: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .history-group .history-item {
   border: none;
@@ -554,6 +608,21 @@ body {
   object-fit: cover;
   border-radius: 6px;
   border: 1px solid var(--border);
+}
+.history-item-actions button.edit-sm {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.btn.share {
+  background: #0ea5e9;
+  color: #fff;
+}
+.btn.share:hover {
+  background: #0284c7;
+}
+.history-item-actions button.share-sm {
+  background: #0ea5e9;
+  color: #fff;
 }
 
 </style>
@@ -603,22 +672,22 @@ body {
         <div id="outputPhotoGrid" class="photo-preview-grid"></div>
       </div>
       <div class="actions">
-        <button id="copyBtn" class="btn secondary">📋 Copy Text</button>
-        <button id="whatsappBtn" class="btn whatsapp">💬 Share Text + Photos</button>
+        <button id="shareBtn" class="btn share">📤 Share</button>
       </div>
-      <p id="copyFeedback" class="feedback hidden">Copied to clipboard!</p>
       <p id="shareNote" class="share-note hidden"></p>
     </section>
 
     <section class="card">
       <div class="history-header">
         <h2 class="section-title" style="margin-bottom:0">Saved History</h2>
-        <div class="history-actions">
+        <!-- <div class="history-actions">
+          <button id="expandAllHistoryBtn" class="btn-small secondary">Expand All</button>
+          <button id="collapseAllHistoryBtn" class="btn-small secondary">Collapse All</button>
           <button id="exportHistoryBtn" class="btn-small secondary">Export CSV</button>
-          <!--<button id="clearHistoryBtn" class="btn-small danger">Clear All</button> -->
-        </div>
+          <button id="clearHistoryBtn" class="btn-small danger">Clear All</button>
+        </div> -->
       </div>
-      <p class="history-desc">Every generated text is saved on this phone.</p>
+      <p class="history-desc">Grouped by store. Tap a store to expand or collapse. Edit to reload a record into the form.</p>
       <div id="historyList" class="history-list">
         <p class="history-empty">No saved records yet.</p>
       </div>
@@ -645,17 +714,19 @@ const outputSection = document.getElementById("outputSection");
 const outputText = document.getElementById("outputText");
 const outputPhotoWrap = document.getElementById("outputPhotoWrap");
 const outputPhotoGrid = document.getElementById("outputPhotoGrid");
-const copyBtn = document.getElementById("copyBtn");
-const whatsappBtn = document.getElementById("whatsappBtn");
-const copyFeedback = document.getElementById("copyFeedback");
+const shareBtn = document.getElementById("shareBtn");
 const shareNote = document.getElementById("shareNote");
 const historyList = document.getElementById("historyList");
 const exportHistoryBtn = document.getElementById("exportHistoryBtn");
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+const expandAllHistoryBtn = document.getElementById("expandAllHistoryBtn");
+const collapseAllHistoryBtn = document.getElementById("collapseAllHistoryBtn");
 
 let selectedPhotos = [];
 let currentTemplateName = "";
 let filteredStores = [];
+let editingHistoryId = null; // when set, next Generate replaces this history record
+const HISTORY_COLLAPSE_KEY = "posm_history_collapsed_stores";
 
 // Populate template dropdown
 (function initTemplates() {
@@ -1061,6 +1132,7 @@ generateBtn.addEventListener("click", function () {
 
   var photoFiles = selectedPhotos.map(function (p) { return p.file; });
   var record = getCurrentRecord(text);
+  var replaceId = editingHistoryId;
 
   var prep = photoFiles.length
     ? Promise.all(photoFiles.slice(0, 5).map(function (f) { return compressImageToBase64(f, 1280, 0.7); }))
@@ -1068,10 +1140,19 @@ generateBtn.addEventListener("click", function () {
 
   prep.then(function (photoObjs) {
     record.photos = photosToDataUrls(photoObjs);
+    // If editing: remove the old history entry, then save the new one
+    if (replaceId) {
+      removeFromHistory(replaceId);
+      editingHistoryId = null;
+    }
     addToHistory(record);
     pushToCloud(record, photoFiles, "Saving text" + (photoFiles.length ? " + photos" : ""));
   }).catch(function () {
     record.photos = [];
+    if (replaceId) {
+      removeFromHistory(replaceId);
+      editingHistoryId = null;
+    }
     addToHistory(record);
     pushToCloud(record, photoFiles, "Saving text");
   });
@@ -1080,6 +1161,7 @@ generateBtn.addEventListener("click", function () {
 clearBtn.addEventListener("click", function () {
   if (currentTemplateName) renderForm(currentTemplateName);
   clearPhotos();
+  editingHistoryId = null;
   outputSection.classList.add("hidden");
   shareNote.classList.add("hidden");
 });
@@ -1155,62 +1237,80 @@ function renderOutputPhotos() {
   });
 }
 
-// ---- Copy / Share ----
-copyBtn.addEventListener("click", async function () {
-  const text = outputText.value;
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    copyFeedback.classList.remove("hidden");
-    setTimeout(function () { copyFeedback.classList.add("hidden"); }, 2000);
-  } catch (e) {
-    outputText.select();
-    document.execCommand("copy");
-    copyFeedback.classList.remove("hidden");
-    setTimeout(function () { copyFeedback.classList.add("hidden"); }, 2000);
-  }
-});
-
+// ---- Share ----
 function shareText(text, files) {
   files = files || [];
   shareNote.classList.add("hidden");
-  if (navigator.share) {
-    const data = { text: text };
-    if (files.length && navigator.canShare && navigator.canShare({ files: files })) {
-      data.files = files;
+
+  // System share sheet — any installed app (WhatsApp, Messenger, Telegram, Files, etc.)
+  if (typeof navigator.share === "function") {
+    var data = { text: text || "" };
+    var withFiles = false;
+    if (files.length && navigator.canShare) {
+      try {
+        if (navigator.canShare({ files: files })) {
+          data.files = files;
+          withFiles = true;
+        }
+      } catch (e) { /* ignore */ }
     }
-    navigator.share(data).catch(function (err) {
-      if (err.name === "AbortError") return;
-      fallbackShare(text, files.length);
+    // Some Android builds need title for file shares
+    if (withFiles) data.title = "ROBOTEXT";
+
+    navigator.share(data).then(function () {
+      // shared
+    }).catch(function (err) {
+      if (err && err.name === "AbortError") return;
+      // Retry text-only if file share failed
+      if (withFiles) {
+        navigator.share({ text: text || "" }).catch(function () {
+          fallbackShareCopy(text, files.length);
+        });
+      } else {
+        fallbackShareCopy(text, files.length);
+      }
     });
     return;
   }
-  fallbackShare(text, files.length);
+
+  fallbackShareCopy(text, files.length);
 }
 
-function fallbackShare(text, photoCount) {
-  window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
-  if (photoCount > 0) {
-    shareNote.textContent = photoCount + " photo(s) cannot be attached automatically. Please attach them manually in WhatsApp.";
-    shareNote.classList.remove("hidden");
+function fallbackShareCopy(text, photoCount) {
+  // No Web Share — copy text so user can paste in any app
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text || "").then(function () {
+      shareNote.textContent = "Text copied. Open any app and paste." +
+        (photoCount > 0 ? " Attach " + photoCount + " photo(s) manually." : "");
+      shareNote.classList.remove("hidden");
+    }).catch(function () {
+      prompt("Copy this text, then paste in any app:", text || "");
+    });
+  } else {
+    prompt("Copy this text, then paste in any app:", text || "");
   }
 }
 
-whatsappBtn.addEventListener("click", function () {
+function doShareFromOutput() {
   const text = outputText.value;
-  if (!text) return;
-  var photoFiles = selectedPhotos.map(function (p) { return p.file; });
-  var record = getCurrentRecord(text);
+  if (!text && !selectedPhotos.length) return;
+  var photoFiles = selectedPhotos.map(function (p) { return p.file; }).filter(Boolean);
+  var record = getCurrentRecord(text || "");
   var prep = photoFiles.length
     ? Promise.all(photoFiles.slice(0, 5).map(function (f) { return compressImageToBase64(f, 1280, 0.7); }))
     : Promise.resolve([]);
   prep.then(function (photoObjs) {
     record.photos = photosToDataUrls(photoObjs);
-    // update latest history entry photos if needed — still push cloud
     pushToCloud(record, photoFiles, "Saving text" + (photoFiles.length ? " + photos" : ""));
   });
-  shareText(text, photoFiles);
-});
+  shareText(text || "", photoFiles);
+}
+
+if (shareBtn) {
+  shareBtn.addEventListener("click", function () {
+    doShareFromOutput();
+  });
+}
 
 // ---- History ----
 function loadHistory() {
@@ -1232,6 +1332,33 @@ function addToHistory(record) {
   renderHistory();
 }
 
+function removeFromHistory(id) {
+  if (!id) return;
+  const list = loadHistory().filter(function (r) { return r.id !== id; });
+  saveHistory(list);
+  renderHistory();
+}
+
+function loadCollapsedStores() {
+  try {
+    const raw = localStorage.getItem(HISTORY_COLLAPSE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) { return {}; }
+}
+
+function saveCollapsedStores(map) {
+  try {
+    localStorage.setItem(HISTORY_COLLAPSE_KEY, JSON.stringify(map || {}));
+  } catch (e) { /* ignore */ }
+}
+
+function setStoreCollapsed(storeKey, collapsed) {
+  const map = loadCollapsedStores();
+  if (collapsed) map[storeKey] = true;
+  else delete map[storeKey];
+  saveCollapsedStores(map);
+}
+
 function renderHistory() {
   const list = loadHistory();
   historyList.innerHTML = "";
@@ -1240,43 +1367,48 @@ function renderHistory() {
     return;
   }
 
-  // Group by template
+  // Group by store name
   const groups = {};
   list.forEach(function (rec) {
-    const key = rec.template || "Other";
+    const key = (rec.store && String(rec.store).trim()) || "— Unknown store —";
     if (!groups[key]) groups[key] = [];
     groups[key].push(rec);
   });
 
-  const templateNames = Object.keys(groups).sort();
+  const storeNames = Object.keys(groups).sort(function (a, b) {
+    return a.localeCompare(b, undefined, { sensitivity: "base" });
+  });
+  const collapsedMap = loadCollapsedStores();
 
-  templateNames.forEach(function (tmplName) {
-    const records = groups[tmplName];
+  storeNames.forEach(function (storeName) {
+    const records = groups[storeName];
+    const isCollapsed = !!collapsedMap[storeName];
     const section = document.createElement("div");
-    section.className = "history-group";
+    section.className = "history-group" + (isCollapsed ? " collapsed" : "");
+    section.dataset.store = storeName;
 
     const header = document.createElement("div");
     header.className = "history-group-header";
+    header.setAttribute("role", "button");
+    header.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
     header.innerHTML =
-      '<span class="history-group-title">' + escapeHtml(tmplName) + '</span>' +
+      '<div class="history-group-header-left">' +
+        '<span class="history-group-chevron" aria-hidden="true">▼</span>' +
+        '<span class="history-group-title" title="' + escapeHtml(storeName) + '">' + escapeHtml(storeName) + '</span>' +
+      '</div>' +
       '<span class="history-group-count">' + records.length + ' record' + (records.length > 1 ? "s" : "") + '</span>';
     section.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "history-group-body";
 
     records.forEach(function (rec) {
       const item = document.createElement("div");
       item.className = "history-item";
-      var photoHtml = "";
-      if (rec.photos && rec.photos.length) {
-        photoHtml = '<div class="history-photos">';
-        rec.photos.forEach(function (ph) {
-          var src = ph.dataUrl || ("data:" + (ph.type || "image/jpeg") + ";base64," + ph.data);
-          photoHtml += '<img src="' + src + '" alt="photo" />';
-        });
-        photoHtml += '</div>';
-      }
+      // Photos are stored in the record but not shown in history list
       item.innerHTML =
         '<div class="history-item-top">' +
-          '<div class="history-item-title">' + escapeHtml(rec.store || "—") + '</div>' +
+          '<div class="history-item-title">' + escapeHtml(rec.template || "—") + '</div>' +
           '<div class="history-item-date">' + escapeHtml(formatDateTime(rec.savedAt)) + '</div>' +
         '</div>' +
         '<div class="history-item-meta">' +
@@ -1285,20 +1417,133 @@ function renderHistory() {
           (rec.addcode ? ' · ' + escapeHtml(rec.addcode) : '') +
           (rec.photos && rec.photos.length ? ' · 📷 ' + rec.photos.length + ' photo(s)' : '') +
         '</div>' +
-        photoHtml +
         '<div class="history-item-actions">' +
-          '<button type="button" data-action="copy" data-id="' + rec.id + '">Copy</button>' +
-          '<button type="button" class="whatsapp-sm" data-action="share" data-id="' + rec.id + '">Share again</button>' +
+          '<button type="button" class="edit-sm" data-action="edit" data-id="' + rec.id + '">Edit</button>' +
+          '<button type="button" class="share-sm" data-action="share" data-id="' + rec.id + '">Share</button>' +
           '<button type="button" class="danger-sm" data-action="delete" data-id="' + rec.id + '">Delete</button>' +
         '</div>';
-      section.appendChild(item);
+      body.appendChild(item);
     });
 
+    section.appendChild(body);
     historyList.appendChild(section);
   });
 }
 
+function parseDateToIso(displayDate) {
+  if (!displayDate) return todayIso();
+  var parts = String(displayDate).trim().split(/[\/\-]/);
+  if (parts.length !== 3) return todayIso();
+  var a = parseInt(parts[0], 10);
+  var b = parseInt(parts[1], 10);
+  var c = parseInt(parts[2], 10);
+  if (!a || !b || !c) return todayIso();
+  if (String(c).length === 4) {
+    return c + "-" + String(a).padStart(2, "0") + "-" + String(b).padStart(2, "0");
+  }
+  if (String(a).length === 4) {
+    return a + "-" + String(b).padStart(2, "0") + "-" + String(c).padStart(2, "0");
+  }
+  return todayIso();
+}
+
+function applyFieldValuesFromText(text) {
+  if (!text) return;
+  var lines = String(text).split("\n");
+  var map = {};
+  lines.forEach(function (line) {
+    var idx = line.indexOf(":");
+    if (idx === -1) return;
+    var label = line.slice(0, idx).trim();
+    var val = line.slice(idx + 1).trim();
+    if (label) map[label.toUpperCase()] = val;
+  });
+
+  Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
+    var label = (inp.getAttribute("data-label") || "").trim().toUpperCase();
+    if (label && map[label] !== undefined) {
+      inp.value = map[label];
+    }
+  });
+}
+
+function editHistoryRecord(rec) {
+  if (!rec || !rec.template) {
+    alert("This record has no template and cannot be edited.");
+    return;
+  }
+  if (!TEMPLATES_DATA[rec.template]) {
+    alert("Template \"" + rec.template + "\" is no longer available.");
+    return;
+  }
+
+  // Remember which history entry to replace when user generates again
+  editingHistoryId = rec.id || null;
+
+  templateSelect.value = rec.template;
+  renderForm(rec.template);
+  formSection.classList.remove("hidden");
+
+  var dateEl = document.getElementById("field_date");
+  if (dateEl) dateEl.value = parseDateToIso(rec.date);
+
+  var storeSearch = document.getElementById("storeSearch");
+  var storeNameHidden = document.getElementById("storeName");
+  var supervisorInput = document.getElementById("field_supervisor");
+  var addcodeInput = document.getElementById("field_addcode");
+  if (storeSearch) storeSearch.value = rec.store || "";
+  if (storeNameHidden) storeNameHidden.value = rec.store || "";
+  if (supervisorInput) supervisorInput.value = rec.supervisor || "";
+  if (addcodeInput) addcodeInput.value = rec.addcode || "";
+
+  if (rec.store) {
+    var found = STORES.find(function (s) {
+      return s.store === rec.store;
+    });
+    if (found) {
+      if (supervisorInput && !rec.supervisor) supervisorInput.value = found.supervisor || "";
+      if (addcodeInput && !rec.addcode) addcodeInput.value = found.addcode || "";
+    }
+  }
+
+  applyFieldValuesFromText(rec.text || "");
+
+  clearPhotos();
+  if (rec.photos && rec.photos.length) {
+    rec.photos.forEach(function (ph) {
+      var f = base64ToFile(ph);
+      if (!f) return;
+      var url = ph.dataUrl || ("data:" + (ph.type || "image/jpeg") + ";base64," + ph.data);
+      selectedPhotos.push({ file: f, url: url });
+    });
+    renderPhotoPreviews();
+  }
+
+  outputText.value = rec.text || "";
+  renderOutputPhotos();
+  shareNote.classList.add("hidden");
+  outputSection.classList.remove("hidden");
+
+  formSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  shareNote.textContent = "Editing — when you Generate, the old history entry will be replaced.";
+  shareNote.classList.remove("hidden");
+  setTimeout(function () { shareNote.classList.add("hidden"); }, 4500);
+}
+
 historyList.addEventListener("click", function (e) {
+  const header = e.target.closest(".history-group-header");
+  if (header && !e.target.closest("button")) {
+    const section = header.closest(".history-group");
+    if (section) {
+      const storeKey = section.dataset.store || "";
+      const nowCollapsed = !section.classList.contains("collapsed");
+      section.classList.toggle("collapsed", nowCollapsed);
+      header.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
+      setStoreCollapsed(storeKey, nowCollapsed);
+    }
+    return;
+  }
+
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
   const id = btn.dataset.id;
@@ -1307,21 +1552,17 @@ historyList.addEventListener("click", function (e) {
   const rec = list.find(function (r) { return r.id === id; });
   if (!rec) return;
 
-  if (action === "copy") {
-    navigator.clipboard.writeText(rec.text).then(function () {
-      alert("Copied!");
-    }).catch(function () {
-      prompt("Copy:", rec.text);
-    });
-  } else if (action === "share") {
-    var files = [];
+  if (action === "share") {
+    var filesH = [];
     if (rec.photos && rec.photos.length) {
       rec.photos.forEach(function (ph) {
         var f = base64ToFile(ph);
-        if (f) files.push(f);
+        if (f) filesH.push(f);
       });
     }
-    shareText(rec.text || "", files);
+    shareText(rec.text || "", filesH);
+  } else if (action === "edit") {
+    editHistoryRecord(rec);
   } else if (action === "delete") {
     if (confirm("Delete this record?")) {
       saveHistory(list.filter(function (r) { return r.id !== id; }));
@@ -1329,6 +1570,25 @@ historyList.addEventListener("click", function (e) {
     }
   }
 });
+
+if (expandAllHistoryBtn) {
+  expandAllHistoryBtn.addEventListener("click", function () {
+    saveCollapsedStores({});
+    renderHistory();
+  });
+}
+if (collapseAllHistoryBtn) {
+  collapseAllHistoryBtn.addEventListener("click", function () {
+    const list = loadHistory();
+    const map = {};
+    list.forEach(function (rec) {
+      const key = (rec.store && String(rec.store).trim()) || "— Unknown store —";
+      map[key] = true;
+    });
+    saveCollapsedStores(map);
+    renderHistory();
+  });
+}
 
 exportHistoryBtn.addEventListener("click", function () {
   const list = loadHistory();
