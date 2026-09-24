@@ -614,15 +614,53 @@ body {
   color: #1d4ed8;
 }
 .btn.share {
-  background: #0ea5e9;
+  background: var(--whatsapp);
   color: #fff;
 }
 .btn.share:hover {
-  background: #0284c7;
+  background: var(--whatsapp-dark);
 }
 .history-item-actions button.share-sm {
-  background: #0ea5e9;
+  background: var(--whatsapp);
   color: #fff;
+}
+
+.input.input-error {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2) !important;
+  background: #fef2f2;
+}
+.field-error {
+  display: none;
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #dc2626;
+}
+.field-error.visible {
+  display: block;
+}
+.form-error-banner {
+  display: none;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+.form-error-banner.visible {
+  display: block;
+  animation: flashError 0.45s ease;
+}
+@keyframes flashError {
+  0%, 100% { opacity: 1; }
+  25% { opacity: 0.4; }
+  50% { opacity: 1; }
+  75% { opacity: 0.4; }
 }
 
 </style>
@@ -672,7 +710,7 @@ body {
         <div id="outputPhotoGrid" class="photo-preview-grid"></div>
       </div>
       <div class="actions">
-        <button id="shareBtn" class="btn share">📤 Share</button>
+        <button id="shareBtn" class="btn share">💬 Share</button>
       </div>
       <p id="shareNote" class="share-note hidden"></p>
     </section>
@@ -797,6 +835,145 @@ function isNcOosField(label) {
   return s.indexOf("NC") !== -1 && s.indexOf("OOS") !== -1;
 }
 
+function isPlacementDateField(label) {
+  if (!label) return false;
+  var s = String(label).toUpperCase().replace(/\s+/g, " ").trim();
+  return s.indexOf("PLACEMENT DATE") !== -1 || s === "PLACEMENT DATE:";
+}
+
+function isValidYesNo(val) {
+  var v = String(val || "").trim().toUpperCase();
+  return v === "YES" || v === "NO";
+}
+
+function isValidNcOos(val) {
+  var v = String(val || "").trim().toUpperCase();
+  return v === "NC" || v === "OOS";
+}
+
+function normalizeYesNo(val) {
+  return String(val || "").trim().toUpperCase();
+}
+
+function normalizeNcOos(val) {
+  return String(val || "").trim().toUpperCase();
+}
+
+function clearFieldErrors() {
+  dynamicForm.querySelectorAll(".input-error").forEach(function (el) {
+    el.classList.remove("input-error");
+  });
+  dynamicForm.querySelectorAll(".field-error").forEach(function (el) {
+    el.classList.remove("visible");
+    el.textContent = "";
+  });
+  var banner = document.getElementById("formErrorBanner");
+  if (banner) {
+    banner.classList.remove("visible");
+    banner.textContent = "";
+  }
+}
+
+function setFieldError(inputEl, message) {
+  if (!inputEl) return;
+  inputEl.classList.add("input-error");
+  var field = inputEl.closest(".field");
+  if (!field) return;
+  var err = field.querySelector(".field-error");
+  if (!err) {
+    err = document.createElement("div");
+    err.className = "field-error";
+    field.appendChild(err);
+  }
+  err.textContent = message;
+  err.classList.add("visible");
+}
+
+function validateForm() {
+  clearFieldErrors();
+  var errors = [];
+  var firstErrorEl = null;
+
+  function fail(el, msg) {
+    errors.push(msg);
+    setFieldError(el, msg);
+    if (!firstErrorEl && el) firstErrorEl = el;
+  }
+
+  // Date required
+  var dateEl = document.getElementById("field_date");
+  if (dateEl && !String(dateEl.value || "").trim()) {
+    fail(dateEl, "Date is required.");
+  }
+
+  // Store required (must select from list so hidden has value)
+  var storeSearch = document.getElementById("storeSearch");
+  var storeNameHidden = document.getElementById("storeName");
+  var storeVal = (storeNameHidden && storeNameHidden.value) || "";
+  if (!storeVal.trim()) {
+    fail(storeSearch, "Select a store from the list.");
+  }
+
+  // Supervisor / addcode should auto-fill with store
+  var supervisorEl = document.getElementById("field_supervisor");
+  var addcodeEl = document.getElementById("field_addcode");
+  if (supervisorEl && !String(supervisorEl.value || "").trim()) {
+    fail(supervisorEl, "Area Supervisor is required (select a store).");
+  }
+  if (addcodeEl && !String(addcodeEl.value || "").trim()) {
+    fail(addcodeEl, "Address Code is required (select a store).");
+  }
+
+  // All free inputs required + format rules
+  Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
+    var label = inp.getAttribute("data-label") || "This field";
+    var raw = String(inp.value || "").trim();
+
+    if (!raw) {
+      fail(inp, label + " is required.");
+      return;
+    }
+
+    if (isPlacementDateField(label)) {
+      // date input value is YYYY-MM-DD
+      if (!raw) {
+        fail(inp, "Placement Date is required.");
+      }
+      return;
+    }
+
+    if (isNcOosField(label)) {
+      if (!isValidNcOos(raw)) {
+        fail(inp, "Enter NC or OOS only.");
+      } else {
+        inp.value = normalizeNcOos(raw);
+      }
+      return;
+    }
+
+    if (isYesNoField(label)) {
+      if (!isValidYesNo(raw)) {
+        fail(inp, "Enter YES or NO only.");
+      } else {
+        inp.value = normalizeYesNo(raw);
+      }
+    }
+  });
+
+  var banner = document.getElementById("formErrorBanner");
+  if (errors.length) {
+    if (banner) {
+      banner.textContent = "Please fix " + errors.length + " error(s) before generating.";
+      banner.classList.add("visible");
+    }
+    if (firstErrorEl) {
+      firstErrorEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      try { firstErrorEl.focus(); } catch (e) { /* ignore */ }
+    }
+    return false;
+  }
+  return true;
+}
 
 function renderForm(name) {
   const lines = TEMPLATES_DATA[name];
@@ -804,6 +981,12 @@ function renderForm(name) {
   currentTemplateName = name;
   templateTitle.textContent = name;
   dynamicForm.innerHTML = "";
+
+  // Error banner at top of form
+  var banner = document.createElement("div");
+  banner.id = "formErrorBanner";
+  banner.className = "form-error-banner";
+  dynamicForm.appendChild(banner);
 
   // Reorder for display: Date → Store → Supervisor → Address Code → rest
   // (generated text still follows original Excel order)
@@ -859,15 +1042,60 @@ function renderForm(name) {
         '<label>' + escapeHtml(line.label) + '</label>' +
         '<input type="text" class="input readonly" data-role="prefilled" data-label="' + escapeHtml(line.label) + '" value="' + escapeHtml(line.value) + '" readonly />';
     } else if (line.type === "input") {
-      var ph = "Enter value...";
-      if (isNcOosField(line.label)) ph = "NC or OOS";
-      else if (isYesNoField(line.label)) ph = "YES / NO";
-      field.innerHTML =
-        '<label>' + escapeHtml(line.label) + '</label>' +
-        '<input type="text" class="input" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '" placeholder="' + ph + '" />';
+      if (isPlacementDateField(line.label)) {
+        field.innerHTML =
+          '<label>' + escapeHtml(line.label) + ' <span style="color:#dc2626">*</span></label>' +
+          '<input type="date" class="input" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '" data-placement-date="1" value="" />' +
+          '<div class="field-error"></div>';
+      } else {
+        var ph = "Enter value...";
+        var extraClass = "";
+        if (isNcOosField(line.label)) {
+          ph = "NC or OOS only";
+          extraClass = " input-nc-oos";
+        } else if (isYesNoField(line.label)) {
+          ph = "YES or NO only";
+          extraClass = " input-yes-no";
+        }
+        field.innerHTML =
+          '<label>' + escapeHtml(line.label) + ' <span style="color:#dc2626">*</span></label>' +
+          '<input type="text" class="input' + extraClass + '" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '" placeholder="' + ph + '" />' +
+          '<div class="field-error"></div>';
+      }
+    }
+
+    if (line.type === "date" || line.type === "store") {
+      // ensure error slot exists
+      if (!field.querySelector(".field-error")) {
+        field.innerHTML += '<div class="field-error"></div>';
+      }
     }
 
     dynamicForm.appendChild(field);
+  });
+
+  // Live normalize / light validate for YES/NO and NC/OOS
+  dynamicForm.querySelectorAll(".input-yes-no, .input-nc-oos").forEach(function (inp) {
+    inp.addEventListener("blur", function () {
+      var label = inp.getAttribute("data-label") || "";
+      var raw = String(inp.value || "").trim();
+      if (!raw) return;
+      if (inp.classList.contains("input-yes-no")) {
+        if (isValidYesNo(raw)) {
+          inp.value = normalizeYesNo(raw);
+          inp.classList.remove("input-error");
+          var fe = inp.closest(".field") && inp.closest(".field").querySelector(".field-error");
+          if (fe) { fe.classList.remove("visible"); fe.textContent = ""; }
+        }
+      } else if (inp.classList.contains("input-nc-oos")) {
+        if (isValidNcOos(raw)) {
+          inp.value = normalizeNcOos(raw);
+          inp.classList.remove("input-error");
+          var fe2 = inp.closest(".field") && inp.closest(".field").querySelector(".field-error");
+          if (fe2) { fe2.classList.remove("visible"); fe2.textContent = ""; }
+        }
+      }
+    });
   });
 
   wireStoreSearch();
@@ -984,7 +1212,11 @@ function buildText() {
       preIdx++;
     } else if (line.type === "input") {
       const inp = freeInputs[freeIdx++];
-      const val = inp ? inp.value : "";
+      var val = inp ? inp.value : "";
+      // Placement Date picker stores ISO (YYYY-MM-DD) — format for output text
+      if (inp && (inp.getAttribute("data-placement-date") === "1" || isPlacementDateField(inp.getAttribute("data-label")))) {
+        val = formatDate(val) || val;
+      }
       out.push(line.label + ": " + val);
     }
   });
@@ -1123,6 +1355,8 @@ function pushToCloud(record, photoFiles, notePrefix) {
 
 generateBtn.addEventListener("click", function () {
   if (!currentTemplateName) return;
+  if (!validateForm()) return;
+
   const text = buildText();
   outputText.value = text;
   renderOutputPhotos();
@@ -1237,63 +1471,55 @@ function renderOutputPhotos() {
   });
 }
 
-// ---- Share ----
+// ---- Share (WhatsApp only) ----
 function shareText(text, files) {
   files = files || [];
   shareNote.classList.add("hidden");
+  text = text || "";
 
-  // System share sheet — any installed app (WhatsApp, Messenger, Telegram, Files, etc.)
-  if (typeof navigator.share === "function") {
-    var data = { text: text || "" };
-    var withFiles = false;
-    if (files.length && navigator.canShare) {
+  // Prefer system share with files when available (user can pick WhatsApp)
+  // Always also open WhatsApp text link as reliable text delivery
+  function openWhatsAppText() {
+    window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
+  }
+
+  if (files.length && typeof navigator.share === "function") {
+    var data = { text: text };
+    var canFiles = false;
+    if (navigator.canShare) {
       try {
         if (navigator.canShare({ files: files })) {
           data.files = files;
-          withFiles = true;
+          canFiles = true;
         }
       } catch (e) { /* ignore */ }
     }
-    // Some Android builds need title for file shares
-    if (withFiles) data.title = "ROBOTEXT";
-
-    navigator.share(data).then(function () {
-      // shared
-    }).catch(function (err) {
-      if (err && err.name === "AbortError") return;
-      // Retry text-only if file share failed
-      if (withFiles) {
-        navigator.share({ text: text || "" }).catch(function () {
-          fallbackShareCopy(text, files.length);
-        });
-      } else {
-        fallbackShareCopy(text, files.length);
-      }
-    });
-    return;
+    if (canFiles) {
+      data.title = "ROBOTEXT";
+      navigator.share(data).then(function () {
+        // Shared via sheet — if user picked WhatsApp with photos, good
+      }).catch(function (err) {
+        if (err && err.name === "AbortError") return;
+        openWhatsAppText();
+        if (files.length) {
+          shareNote.textContent = files.length + " photo(s) — attach them manually in WhatsApp.";
+          shareNote.classList.remove("hidden");
+        }
+      });
+      return;
+    }
   }
 
-  fallbackShareCopy(text, files.length);
-}
-
-function fallbackShareCopy(text, photoCount) {
-  // No Web Share — copy text so user can paste in any app
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text || "").then(function () {
-      shareNote.textContent = "Text copied. Open any app and paste." +
-        (photoCount > 0 ? " Attach " + photoCount + " photo(s) manually." : "");
-      shareNote.classList.remove("hidden");
-    }).catch(function () {
-      prompt("Copy this text, then paste in any app:", text || "");
-    });
-  } else {
-    prompt("Copy this text, then paste in any app:", text || "");
+  openWhatsAppText();
+  if (files.length) {
+    shareNote.textContent = files.length + " photo(s) cannot be attached automatically. Attach them in WhatsApp.";
+    shareNote.classList.remove("hidden");
   }
 }
 
 function doShareFromOutput() {
   const text = outputText.value;
-  if (!text && !selectedPhotos.length) return;
+  if (!text) return;
   var photoFiles = selectedPhotos.map(function (p) { return p.file; }).filter(Boolean);
   var record = getCurrentRecord(text || "");
   var prep = photoFiles.length
@@ -1419,7 +1645,7 @@ function renderHistory() {
         '</div>' +
         '<div class="history-item-actions">' +
           '<button type="button" class="edit-sm" data-action="edit" data-id="' + rec.id + '">Edit</button>' +
-          '<button type="button" class="share-sm" data-action="share" data-id="' + rec.id + '">Share</button>' +
+          '<button type="button" class="share-sm" data-action="share" data-id="' + rec.id + '">💬 Share</button>' +
           '<button type="button" class="danger-sm" data-action="delete" data-id="' + rec.id + '">Delete</button>' +
         '</div>';
       body.appendChild(item);
@@ -1462,7 +1688,12 @@ function applyFieldValuesFromText(text) {
   Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
     var label = (inp.getAttribute("data-label") || "").trim().toUpperCase();
     if (label && map[label] !== undefined) {
-      inp.value = map[label];
+      var val = map[label];
+      // Placement date inputs need ISO value for the date picker
+      if (inp.getAttribute("data-placement-date") === "1" || isPlacementDateField(inp.getAttribute("data-label"))) {
+        val = parseDateToIso(val);
+      }
+      inp.value = val;
     }
   });
 }
