@@ -1374,6 +1374,8 @@ generateBtn.addEventListener("click", function () {
     ? Promise.all(photoFiles.slice(0, 5).map(function (f) { return compressImageToBase64(f, 1280, 0.7); }))
     : Promise.resolve([]);
 
+  // Generate only builds the report + local history.
+  // Database (Google Sheet) save happens when the user taps Share.
   prep.then(function (photoObjs) {
     record.photos = photosToDataUrls(photoObjs);
     // If editing: remove the old history entry, then save the new one
@@ -1382,7 +1384,6 @@ generateBtn.addEventListener("click", function () {
       editingHistoryId = null;
     }
     addToHistory(record);
-    pushToCloud(record, photoFiles, "Saving text" + (photoFiles.length ? " + photos" : ""));
   }).catch(function () {
     record.photos = [];
     if (replaceId) {
@@ -1390,7 +1391,6 @@ generateBtn.addEventListener("click", function () {
       editingHistoryId = null;
     }
     addToHistory(record);
-    pushToCloud(record, photoFiles, "Saving text");
   });
 });
 
@@ -1524,12 +1524,16 @@ function doShareFromOutput() {
   if (!text) return;
   var photoFiles = selectedPhotos.map(function (p) { return p.file; }).filter(Boolean);
   var record = getCurrentRecord(text || "");
+  // Share = open WhatsApp + save to database (Google Sheet)
   var prep = photoFiles.length
     ? Promise.all(photoFiles.slice(0, 5).map(function (f) { return compressImageToBase64(f, 1280, 0.7); }))
     : Promise.resolve([]);
   prep.then(function (photoObjs) {
     record.photos = photosToDataUrls(photoObjs);
     pushToCloud(record, photoFiles, "Saving text" + (photoFiles.length ? " + photos" : ""));
+  }).catch(function () {
+    record.photos = [];
+    pushToCloud(record, photoFiles, "Saving text");
   });
   shareText(text || "", photoFiles);
 }
@@ -1793,6 +1797,8 @@ historyList.addEventListener("click", function (e) {
         if (f) filesH.push(f);
       });
     }
+    // History Share also saves to the database (Google Sheet)
+    pushToCloud(rec, filesH, "Saving text" + (filesH.length ? " + photos" : ""));
     shareText(rec.text || "", filesH);
   } else if (action === "edit") {
     editHistoryRecord(rec);
