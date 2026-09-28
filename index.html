@@ -1829,22 +1829,24 @@ if (collapseAllHistoryBtn) {
   });
 }
 
-exportHistoryBtn.addEventListener("click", function () {
-  const list = loadHistory();
-  if (!list.length) { alert("No history to export."); return; }
-  let csv = "Saved At,Template,Date,Store Name,Area Supervisor,Address Code,Text\n";
-  list.forEach(function (r) {
-    function q(v) { return '"' + String(v || "").replace(/"/g, '""') + '"'; }
-    csv += [q(formatDateTime(r.savedAt)), q(r.template), q(r.date), q(r.store), q(r.supervisor), q(r.addcode), q(r.text)].join(",") + "\n";
+if (exportHistoryBtn) {
+  exportHistoryBtn.addEventListener("click", function () {
+    const list = loadHistory();
+    if (!list.length) { alert("No history to export."); return; }
+    let csv = "Saved At,Template,Date,Store Name,Area Supervisor,Address Code,Text\n";
+    list.forEach(function (r) {
+      function q(v) { return '"' + String(v || "").replace(/"/g, '""') + '"'; }
+      csv += [q(formatDateTime(r.savedAt)), q(r.template), q(r.date), q(r.store), q(r.supervisor), q(r.addcode), q(r.text)].join(",") + "\n";
+    });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "posm_history.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   });
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "posm_history.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-});
+}
 
 if (document.getElementById("clearHistoryBtn")) {
   document.getElementById("clearHistoryBtn").addEventListener("click", function () {
