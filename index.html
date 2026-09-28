@@ -725,7 +725,7 @@ body {
           <button id="clearHistoryBtn" class="btn-small danger">Clear All</button>
         </div> -->
       </div>
-      <p class="history-desc">Grouped by store. Tap a store to expand or collapse. Edit to reload a record into the form.</p>
+      <p class="history-desc">Grouped by template. One entry per store (newest keeps). Tap a group to expand or collapse. Edit to reload a record into the form.</p>
       <div id="historyList" class="history-list">
         <p class="history-empty">No saved records yet.</p>
       </div>
@@ -1290,6 +1290,20 @@ function photosToDataUrls(photoObjs) {
   });
 }
 
+function collectFieldValues() {
+  var values = {};
+  Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
+    var key = inp.getAttribute("data-key") || "";
+    if (!key) return;
+    var val = inp.value || "";
+    if (inp.getAttribute("data-placement-date") === "1" || isPlacementDateField(inp.getAttribute("data-label"))) {
+      val = formatDate(val) || val;
+    }
+    values[key] = val;
+  });
+  return values;
+}
+
 function getCurrentRecord(text) {
   var dateEl = document.getElementById("field_date");
   var storeEl = document.getElementById("storeName");
@@ -1305,6 +1319,7 @@ function getCurrentRecord(text) {
     supervisor: supervisorEl ? supervisorEl.value : "",
     addcode: addcodeEl ? addcodeEl.value : "",
     text: text || "",
+    fieldValues: collectFieldValues(),
     photos: []
   };
 }
@@ -1380,28 +1395,29 @@ generateBtn.addEventListener("click", function () {
   var record = getCurrentRecord(text);
   var replaceId = editingHistoryId;
 
-  var prep = photoFiles.length
-    ? Promise.all(photoFiles.slice(0, 5).map(function (f) { return compressImageToBase64(f, 1280, 0.7); }))
-    : Promise.resolve([]);
+  // Save text + field values to history immediately so Edit always sees the latest data
+  // (photos attached in a second pass after compression)
+  if (replaceId) {
+    removeFromHistory(replaceId);
+    editingHistoryId = null;
+  }
+  addToHistory(record);
+
+  if (!photoFiles.length) return;
 
   // Generate only builds the report + local history.
   // Database (Google Sheet) save happens when the user taps Share.
-  prep.then(function (photoObjs) {
-    record.photos = photosToDataUrls(photoObjs);
-    // If editing: remove the old history entry, then save the new one
-    if (replaceId) {
-      removeFromHistory(replaceId);
-      editingHistoryId = null;
-    }
-    addToHistory(record);
-  }).catch(function () {
-    record.photos = [];
-    if (replaceId) {
-      removeFromHistory(replaceId);
-      editingHistoryId = null;
-    }
-    addToHistory(record);
-  });
+  Promise.all(photoFiles.slice(0, 5).map(function (f) { return compressImageToBase64(f, 1280, 0.7); }))
+    .then(function (photoObjs) {
+      var list = loadHistory();
+      var idx = list.findIndex(function (r) { return r.id === record.id; });
+      if (idx !== -1) {
+        list[idx].photos = photosToDataUrls(photoObjs);
+        saveHistory(list);
+        renderHistory();
+      }
+    })
+    .catch(function () { /* keep record without photos */ });
 });
 
 clearBtn.addEventListener("click", function () {
@@ -1566,8 +1582,21 @@ function saveHistory(list) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
 }
 
+function sameStoreTemplate(a, b) {
+  if (!a || !b) return false;
+  var t1 = String(a.template || "").trim().toLowerCase();
+  var t2 = String(b.template || "").trim().toLowerCase();
+  var s1 = String(a.store || "").trim().toLowerCase();
+  var s2 = String(b.store || "").trim().toLowerCase();
+  return t1 && s1 && t1 === t2 && s1 === s2;
+}
+
 function addToHistory(record) {
-  const list = loadHistory();
+  // One entry per template + store: drop older duplicates, keep the new one
+  var list = loadHistory().filter(function (r) {
+    if (record.id && r.id === record.id) return false;
+    return !sameStoreTemplate(r, record);
+  });
   list.unshift(record);
   if (list.length > 200) list.length = 200;
   saveHistory(list);
@@ -1601,8 +1630,32 @@ function setGroupCollapsed(groupKey, collapsed) {
   saveCollapsedStores(map);
 }
 
+function dedupeHistoryByTemplateStore(list) {
+  // Keep only the newest record for each template + store pair
+  var seen = {};
+  var out = [];
+  list.forEach(function (rec) {
+    var key = String(rec.template || "").trim().toLowerCase() + "||" +
+      String(rec.store || "").trim().toLowerCase();
+    if (!String(rec.template || "").trim() || !String(rec.store || "").trim()) {
+      out.push(rec);
+      return;
+    }
+    if (seen[key]) return; // already kept a newer one (list is newest-first)
+    seen[key] = true;
+    out.push(rec);
+  });
+  return out;
+}
+
 function renderHistory() {
-  const list = loadHistory();
+  var list = loadHistory();
+  // Clean up any existing duplicates (same template + same store)
+  var deduped = dedupeHistoryByTemplateStore(list);
+  if (deduped.length !== list.length) {
+    saveHistory(deduped);
+    list = deduped;
+  }
   historyList.innerHTML = "";
   if (!list.length) {
     historyList.innerHTML = '<p class="history-empty">No saved records yet.</p>';
@@ -1694,28 +1747,50 @@ function parseDateToIso(displayDate) {
   return todayIso();
 }
 
-function applyFieldValuesFromText(text) {
-  if (!text) return;
-  var lines = String(text).split("\n");
-  var map = {};
-  lines.forEach(function (line) {
-    var idx = line.indexOf(":");
-    if (idx === -1) return;
-    var label = line.slice(0, idx).trim();
-    var val = line.slice(idx + 1).trim();
-    if (label) map[label.toUpperCase()] = val;
-  });
+function applyFieldValuesFromRecord(rec) {
+  if (!rec) return;
 
-  Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
-    var label = (inp.getAttribute("data-label") || "").trim().toUpperCase();
-    if (label && map[label] !== undefined) {
-      var val = map[label];
-      // Placement date inputs need ISO value for the date picker
+  // Prefer structured values saved on Generate (correct even with repeated labels)
+  if (rec.fieldValues && typeof rec.fieldValues === "object") {
+    Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
+      var key = inp.getAttribute("data-key") || "";
+      if (!key || rec.fieldValues[key] === undefined) return;
+      var val = rec.fieldValues[key];
       if (inp.getAttribute("data-placement-date") === "1" || isPlacementDateField(inp.getAttribute("data-label"))) {
         val = parseDateToIso(val);
       }
       inp.value = val;
+    });
+    return;
+  }
+
+  // Fallback: parse generated text, preserving order for repeated labels (Available, Remarks, etc.)
+  applyFieldValuesFromText(rec.text || "");
+}
+
+function applyFieldValuesFromText(text) {
+  if (!text) return;
+  var lines = String(text).split("\n");
+  // Queue of values per label so repeated labels (Available x2, Remarks x2, …) apply in order
+  var queues = {};
+  lines.forEach(function (line) {
+    var idx = line.indexOf(":");
+    if (idx === -1) return;
+    var label = line.slice(0, idx).trim().toUpperCase();
+    var val = line.slice(idx + 1).trim();
+    if (!label) return;
+    if (!queues[label]) queues[label] = [];
+    queues[label].push(val);
+  });
+
+  Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
+    var label = (inp.getAttribute("data-label") || "").trim().toUpperCase();
+    if (!label || !queues[label] || !queues[label].length) return;
+    var val = queues[label].shift();
+    if (inp.getAttribute("data-placement-date") === "1" || isPlacementDateField(inp.getAttribute("data-label"))) {
+      val = parseDateToIso(val);
     }
+    inp.value = val;
   });
 }
 
@@ -1758,7 +1833,9 @@ function editHistoryRecord(rec) {
     }
   }
 
-  applyFieldValuesFromText(rec.text || "");
+  // Prefills always come from the CURRENT template definition (updated Item code / description, etc.)
+  // User answers come from the saved record (fieldValues or parsed text)
+  applyFieldValuesFromRecord(rec);
 
   clearPhotos();
   if (rec.photos && rec.photos.length) {
