@@ -764,7 +764,7 @@ let selectedPhotos = [];
 let currentTemplateName = "";
 let filteredStores = [];
 let editingHistoryId = null; // when set, next Generate replaces this history record
-const HISTORY_COLLAPSE_KEY = "posm_history_collapsed_stores";
+const HISTORY_COLLAPSE_KEY = "posm_history_collapsed_templates";
 
 // Populate template dropdown
 (function initTemplates() {
@@ -1027,7 +1027,7 @@ function renderForm(name) {
       field.innerHTML =
         '<label>Store Name</label>' +
         '<div class="search-wrap">' +
-          '<input type="text" class="input" id="storeSearch" placeholder="Type to search store..." autocomplete="off" />' +
+          '<input type="text" class="input" id="storeSearch" placeholder="Type any part of the store name..." autocomplete="off" />' +
           '<ul id="storeDropdown" class="dropdown hidden"></ul>' +
         '</div>' +
         '<input type="hidden" id="storeName" />';
@@ -1123,8 +1123,18 @@ function wireStoreSearch() {
       return;
     }
 
+    // Text contains: every word in the query must appear somewhere in the store name
+    // (also matches supervisor / address code as extra help)
+    const words = q.split(/\s+/).filter(Boolean);
     filteredStores = STORES.filter(function (s) {
-      return s.store.toLowerCase().indexOf(q) !== -1;
+      const hay = (
+        (s.store || "") + " " +
+        (s.supervisor || "") + " " +
+        (s.addcode || "")
+      ).toLowerCase();
+      return words.every(function (w) {
+        return hay.indexOf(w) !== -1;
+      });
     }).slice(0, 50);
 
     if (filteredStores.length === 0) {
@@ -1584,10 +1594,10 @@ function saveCollapsedStores(map) {
   } catch (e) { /* ignore */ }
 }
 
-function setStoreCollapsed(storeKey, collapsed) {
+function setGroupCollapsed(groupKey, collapsed) {
   const map = loadCollapsedStores();
-  if (collapsed) map[storeKey] = true;
-  else delete map[storeKey];
+  if (collapsed) map[groupKey] = true;
+  else delete map[groupKey];
   saveCollapsedStores(map);
 }
 
@@ -1599,25 +1609,29 @@ function renderHistory() {
     return;
   }
 
-  // Group by store name
+  // Group by template name; each item shows the store
   const groups = {};
   list.forEach(function (rec) {
-    const key = (rec.store && String(rec.store).trim()) || "— Unknown store —";
+    const key = (rec.template && String(rec.template).trim()) || "— Unknown template —";
     if (!groups[key]) groups[key] = [];
     groups[key].push(rec);
   });
 
-  const storeNames = Object.keys(groups).sort(function (a, b) {
+  const templateNames = Object.keys(groups).sort(function (a, b) {
     return a.localeCompare(b, undefined, { sensitivity: "base" });
   });
   const collapsedMap = loadCollapsedStores();
 
-  storeNames.forEach(function (storeName) {
-    const records = groups[storeName];
-    const isCollapsed = !!collapsedMap[storeName];
+  templateNames.forEach(function (templateName) {
+    const records = groups[templateName];
+    // Newest first within each template
+    records.sort(function (a, b) {
+      return (b.savedAt || 0) - (a.savedAt || 0);
+    });
+    const isCollapsed = !!collapsedMap[templateName];
     const section = document.createElement("div");
     section.className = "history-group" + (isCollapsed ? " collapsed" : "");
-    section.dataset.store = storeName;
+    section.dataset.group = templateName;
 
     const header = document.createElement("div");
     header.className = "history-group-header";
@@ -1626,7 +1640,7 @@ function renderHistory() {
     header.innerHTML =
       '<div class="history-group-header-left">' +
         '<span class="history-group-chevron" aria-hidden="true">▼</span>' +
-        '<span class="history-group-title" title="' + escapeHtml(storeName) + '">' + escapeHtml(storeName) + '</span>' +
+        '<span class="history-group-title" title="' + escapeHtml(templateName) + '">' + escapeHtml(templateName) + '</span>' +
       '</div>' +
       '<span class="history-group-count">' + records.length + ' record' + (records.length > 1 ? "s" : "") + '</span>';
     section.appendChild(header);
@@ -1637,10 +1651,11 @@ function renderHistory() {
     records.forEach(function (rec) {
       const item = document.createElement("div");
       item.className = "history-item";
+      const storeLabel = (rec.store && String(rec.store).trim()) || "— Unknown store —";
       // Photos are stored in the record but not shown in history list
       item.innerHTML =
         '<div class="history-item-top">' +
-          '<div class="history-item-title">' + escapeHtml(rec.template || "—") + '</div>' +
+          '<div class="history-item-title">' + escapeHtml(storeLabel) + '</div>' +
           '<div class="history-item-date">' + escapeHtml(formatDateTime(rec.savedAt)) + '</div>' +
         '</div>' +
         '<div class="history-item-meta">' +
@@ -1772,11 +1787,11 @@ historyList.addEventListener("click", function (e) {
   if (header && !e.target.closest("button")) {
     const section = header.closest(".history-group");
     if (section) {
-      const storeKey = section.dataset.store || "";
+      const groupKey = section.dataset.group || "";
       const nowCollapsed = !section.classList.contains("collapsed");
       section.classList.toggle("collapsed", nowCollapsed);
       header.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
-      setStoreCollapsed(storeKey, nowCollapsed);
+      setGroupCollapsed(groupKey, nowCollapsed);
     }
     return;
   }
@@ -1821,7 +1836,7 @@ if (collapseAllHistoryBtn) {
     const list = loadHistory();
     const map = {};
     list.forEach(function (rec) {
-      const key = (rec.store && String(rec.store).trim()) || "— Unknown store —";
+      const key = (rec.template && String(rec.template).trim()) || "— Unknown template —";
       map[key] = true;
     });
     saveCollapsedStores(map);
