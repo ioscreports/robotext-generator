@@ -1032,7 +1032,7 @@ function validateForm() {
 
     if (isNcOosField(label)) {
       if (!isValidNcOos(raw)) {
-        fail(inp, "Choose NC, OOS, or leave blank.");
+        fail(inp, "Enter NC or OOS only.");
       } else {
         inp.value = normalizeNcOos(raw);
       }
@@ -1136,20 +1136,13 @@ function renderForm(name) {
           '<label>' + escapeHtml(line.label) + '</label>' +
           '<input type="date" class="input" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '" data-placement-date="1" value="" />' +
           '<div class="field-error"></div>';
-      } else if (isNcOosField(line.label)) {
-        // NC / OOS / blank only (optional)
-        field.innerHTML =
-          '<label>' + escapeHtml(line.label) + '</label>' +
-          '<select class="input input-nc-oos" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '">' +
-            '<option value="">— blank —</option>' +
-            '<option value="NC">NC</option>' +
-            '<option value="OOS">OOS</option>' +
-          '</select>' +
-          '<div class="field-error"></div>';
       } else {
         var ph = "Enter value...";
         var extraClass = "";
-        if (isYesNoField(line.label)) {
+        if (isNcOosField(line.label)) {
+          ph = "NC or OOS only";
+          extraClass = " input-nc-oos";
+        } else if (isYesNoField(line.label)) {
           ph = "YES or NO only";
           extraClass = " input-yes-no";
         }
@@ -1170,16 +1163,21 @@ function renderForm(name) {
     dynamicForm.appendChild(field);
   });
 
-  // Live normalize / light validate for YES/NO (NC/OOS is a select — no typing needed)
-  dynamicForm.querySelectorAll(".input-yes-no").forEach(function (inp) {
+  // Live normalize for YES/NO and NC/OOS when user leaves the field
+  dynamicForm.querySelectorAll(".input-yes-no, .input-nc-oos").forEach(function (inp) {
     inp.addEventListener("blur", function () {
       var raw = String(inp.value || "").trim();
       if (!raw) return;
-      if (isValidYesNo(raw)) {
+      if (inp.classList.contains("input-yes-no") && isValidYesNo(raw)) {
         inp.value = normalizeYesNo(raw);
         inp.classList.remove("input-error");
         var fe = inp.closest(".field") && inp.closest(".field").querySelector(".field-error");
         if (fe) { fe.classList.remove("visible"); fe.textContent = ""; }
+      } else if (inp.classList.contains("input-nc-oos") && isValidNcOos(raw)) {
+        inp.value = normalizeNcOos(raw);
+        inp.classList.remove("input-error");
+        var fe2 = inp.closest(".field") && inp.closest(".field").querySelector(".field-error");
+        if (fe2) { fe2.classList.remove("visible"); fe2.textContent = ""; }
       }
     });
   });
