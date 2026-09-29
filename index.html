@@ -1040,10 +1040,20 @@ function validateForm() {
     fail(addcodeEl, "Address Code is required (select a store).");
   }
 
-  // All free inputs required + format rules
+  // Free inputs: required (except NC/OOS which is optional) + format rules
   Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
     var label = inp.getAttribute("data-label") || "This field";
     var raw = String(inp.value || "").trim();
+
+    // NC/OOS is optional — empty is allowed; if filled, must be NC or OOS
+    if (isNcOosField(label)) {
+      if (raw && !isValidNcOos(raw)) {
+        fail(inp, "Enter NC or OOS only (or leave blank).");
+      } else if (raw) {
+        inp.value = normalizeNcOos(raw);
+      }
+      return;
+    }
 
     if (!raw) {
       fail(inp, label + " is required.");
@@ -1054,15 +1064,6 @@ function validateForm() {
       // date input value is YYYY-MM-DD
       if (!raw) {
         fail(inp, "Placement Date is required.");
-      }
-      return;
-    }
-
-    if (isNcOosField(label)) {
-      if (!isValidNcOos(raw)) {
-        fail(inp, "Enter NC or OOS only.");
-      } else {
-        inp.value = normalizeNcOos(raw);
       }
       return;
     }
@@ -1166,15 +1167,17 @@ function renderForm(name) {
       } else {
         var ph = "Enter value...";
         var extraClass = "";
+        var requiredMark = ' <span style="color:#dc2626">*</span>';
         if (isNcOosField(line.label)) {
-          ph = "NC or OOS only";
+          ph = "NC or OOS (optional)";
           extraClass = " input-nc-oos";
+          requiredMark = ""; // NC/OOS not required
         } else if (isYesNoField(line.label)) {
           ph = "YES or NO only";
           extraClass = " input-yes-no";
         }
         field.innerHTML =
-          '<label>' + escapeHtml(line.label) + ' <span style="color:#dc2626">*</span></label>' +
+          '<label>' + escapeHtml(line.label) + requiredMark + '</label>' +
           '<input type="text" class="input' + extraClass + '" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '" placeholder="' + ph + '" />' +
           '<div class="field-error"></div>';
       }
