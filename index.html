@@ -957,6 +957,70 @@ function isPlacementDateField(label) {
   return s.indexOf("PLACEMENT DATE") !== -1 || s === "PLACEMENT DATE:";
 }
 
+function getTemplateKind(name) {
+  var n = String(name || "").toUpperCase();
+  if (n.indexOf("AVAILABILITY") !== -1) return "availability";
+  if (n.indexOf("KASUKI") !== -1) return "kasuki";
+  if (n.indexOf("NPD") !== -1) return "npd";
+  if (n.indexOf("POSM") !== -1) return "posm";
+  if (n.indexOf("STICKERING") !== -1) return "stickering";
+  if (n.indexOf("PRICE OFF") !== -1 || n.indexOf("PRICE INCREASE") !== -1 || n.indexOf("PRICE ROLLBACK") !== -1) {
+    return "price";
+  }
+  return "other";
+}
+
+function isAvailableField(label) {
+  var s = String(label || "").toUpperCase().replace(/\s+/g, " ").trim();
+  return s === "AVAILABLE" || s.indexOf("AVAILABLE") === 0;
+}
+
+function isRemarksField(label) {
+  var s = String(label || "").toUpperCase().replace(/\s+/g, " ").trim();
+  return s === "REMARKS" || s.indexOf("REMARKS") === 0;
+}
+
+function isYesNoLabelField(label) {
+  // Specifically the "YES/NO" labeled field (Availability templates)
+  var s = String(label || "").toUpperCase().replace(/\s+/g, " ").trim();
+  return s === "YES/NO" || s === "YES/NO?" || s.indexOf("YES/NO") === 0;
+}
+
+function isPriceBeforeAfterField(label) {
+  var s = String(label || "").toUpperCase();
+  return s.indexOf("PRICE BEFORE") !== -1 || s.indexOf("PRICE AFTER") !== -1;
+}
+
+/** True for 0 / 0.0 / 0.00 / 00 / 00.0 / 00.00 / 0,0 / 0,00 etc. */
+function isZeroPriceValue(val) {
+  var v = String(val || "").trim().replace(/\s+/g, "");
+  if (!v) return false;
+  // Treat comma as decimal separator
+  var cleaned = v.replace(/,/g, ".");
+  if (!/^0+(\.0+)?$/.test(cleaned)) return false;
+  return true;
+}
+
+function isFieldRequired(templateName, label) {
+  var kind = getTemplateKind(templateName);
+  if (kind === "availability") {
+    return isYesNoLabelField(label);
+  }
+  if (kind === "kasuki") {
+    return isAvailableField(label) || isRemarksField(label);
+  }
+  if (kind === "npd") {
+    return isAvailableField(label);
+  }
+  if (kind === "posm") {
+    return isAvailableField(label) || isRemarksField(label);
+  }
+  if (kind === "stickering") {
+    return true; // all answer fields required
+  }
+  return false;
+}
+
 function isValidYesNo(val) {
   var v = String(val || "").trim().toUpperCase();
   return v === "YES" || v === "NO";
@@ -1016,7 +1080,7 @@ function validateForm() {
     if (!firstErrorEl && el) firstErrorEl = el;
   }
 
-  // Only Store Name is required (must pick from the list)
+  // Store Name is always required
   var storeSearch = document.getElementById("storeSearch");
   var storeNameHidden = document.getElementById("storeName");
   var storeVal = (storeNameHidden && storeNameHidden.value) || "";
@@ -1024,11 +1088,19 @@ function validateForm() {
     fail(storeSearch, "Select a store from the list.");
   }
 
-  // Other fields optional — only check format when a value is entered
+  var tmpl = currentTemplateName || "";
+
   Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
     var label = inp.getAttribute("data-label") || "This field";
     var raw = String(inp.value || "").trim();
-    if (!raw) return;
+    var required = isFieldRequired(tmpl, label);
+
+    if (!raw) {
+      if (required) {
+        fail(inp, label + " is required.");
+      }
+      return;
+    }
 
     if (isNcOosField(label)) {
       if (!isValidNcOos(raw)) {
@@ -1139,6 +1211,9 @@ function renderForm(name) {
       } else {
         var ph = "Enter value...";
         var extraClass = "";
+        var requiredMark = isFieldRequired(name, line.label)
+          ? ' <span style="color:#dc2626">*</span>'
+          : "";
         if (isNcOosField(line.label)) {
           ph = "NC or OOS only";
           extraClass = " input-nc-oos";
@@ -1147,7 +1222,7 @@ function renderForm(name) {
           extraClass = " input-yes-no";
         }
         field.innerHTML =
-          '<label>' + escapeHtml(line.label) + '</label>' +
+          '<label>' + escapeHtml(line.label) + requiredMark + '</label>' +
           '<input type="text" class="input' + extraClass + '" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '" placeholder="' + ph + '" />' +
           '<div class="field-error"></div>';
       }
@@ -1306,10 +1381,14 @@ function buildText() {
       preIdx++;
     } else if (line.type === "input") {
       const inp = freeInputs[freeIdx++];
-      var val = inp ? inp.value : "";
+      var val = inp ? String(inp.value || "").trim() : "";
       // Placement Date picker stores ISO (YYYY-MM-DD) — format for output text
       if (inp && (inp.getAttribute("data-placement-date") === "1" || isPlacementDateField(inp.getAttribute("data-label")))) {
         val = formatDate(val) || val;
+      }
+      // Price Before / After: treat pure-zero values as blank in generated text
+      if (isPriceBeforeAfterField(line.label) && isZeroPriceValue(val)) {
+        val = "";
       }
       out.push(line.label + ": " + val);
     }
