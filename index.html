@@ -1057,16 +1057,13 @@ function validateForm() {
       return;
     }
 
-    if (!raw) {
-      fail(inp, label + " is required.");
+    // Placement Date is optional — blank allowed
+    if (isPlacementDateField(label)) {
       return;
     }
 
-    if (isPlacementDateField(label)) {
-      // date input value is YYYY-MM-DD
-      if (!raw) {
-        fail(inp, "Placement Date is required.");
-      }
+    if (!raw) {
+      fail(inp, label + " is required.");
       return;
     }
 
@@ -1162,8 +1159,9 @@ function renderForm(name) {
         '<input type="text" class="input readonly" data-role="prefilled" data-label="' + escapeHtml(line.label) + '" value="' + escapeHtml(line.value) + '" readonly />';
     } else if (line.type === "input") {
       if (isPlacementDateField(line.label)) {
+        // Optional — user may leave blank
         field.innerHTML =
-          '<label>' + escapeHtml(line.label) + ' <span style="color:#dc2626">*</span></label>' +
+          '<label>' + escapeHtml(line.label) + '</label>' +
           '<input type="date" class="input" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '" data-placement-date="1" value="" />' +
           '<div class="field-error"></div>';
       } else if (isNcOosField(line.label)) {
@@ -1171,7 +1169,7 @@ function renderForm(name) {
         field.innerHTML =
           '<label>' + escapeHtml(line.label) + '</label>' +
           '<select class="input input-nc-oos" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '">' +
-            '<option value="">WITH STOCKS</option>' +
+            '<option value="">— blank —</option>' +
             '<option value="NC">NC</option>' +
             '<option value="OOS">OOS</option>' +
           '</select>' +
