@@ -1016,7 +1016,15 @@ function validateForm() {
     if (!firstErrorEl && el) firstErrorEl = el;
   }
 
-  // All fields optional — only check format when a value is entered
+  // Only Store Name is required (must pick from the list)
+  var storeSearch = document.getElementById("storeSearch");
+  var storeNameHidden = document.getElementById("storeName");
+  var storeVal = (storeNameHidden && storeNameHidden.value) || "";
+  if (!String(storeVal).trim()) {
+    fail(storeSearch, "Select a store from the list.");
+  }
+
+  // Other fields optional — only check format when a value is entered
   Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
     var label = inp.getAttribute("data-label") || "This field";
     var raw = String(inp.value || "").trim();
@@ -1103,7 +1111,7 @@ function renderForm(name) {
         '<input type="date" class="input" data-role="date" id="field_date" value="' + todayIso() + '" />';
     } else if (line.type === "store") {
       field.innerHTML =
-        '<label>Store Name</label>' +
+        '<label>Store Name <span style="color:#dc2626">*</span></label>' +
         '<div class="search-wrap">' +
           '<input type="text" class="input" id="storeSearch" placeholder="Type any part of the store name..." autocomplete="off" />' +
           '<ul id="storeDropdown" class="dropdown hidden"></ul>' +
