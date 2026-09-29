@@ -663,6 +663,100 @@ body {
   75% { opacity: 0.4; }
 }
 
+/* Guide button + video modal */
+.header-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.75rem;
+}
+.btn-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
+  transition: background 0.15s, transform 0.1s;
+}
+.btn-guide:hover {
+  background: #dbeafe;
+}
+.btn-guide:active {
+  transform: scale(0.97);
+}
+.guide-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+}
+.guide-modal.hidden {
+  display: none !important;
+}
+.guide-modal-panel {
+  width: 100%;
+  max-width: 480px;
+  background: #0f172a;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+.guide-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: #1e293b;
+  color: #fff;
+}
+.guide-modal-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0;
+}
+.guide-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+}
+.guide-close:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+.guide-modal-body {
+  background: #000;
+}
+.guide-modal-body video {
+  display: block;
+  width: 100%;
+  max-height: min(70vh, 520px);
+  background: #000;
+}
+.guide-modal-hint {
+  padding: 0.65rem 1rem;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  background: #1e293b;
+  text-align: center;
+}
+
 </style>
 </head>
 <body>
@@ -670,7 +764,27 @@ body {
     <header class="header">
       <h1>📋 ROBOTEXT GENERATOR</h1>
       <p>Select a template, fill the fields, generate & share</p>
+      <div class="header-actions">
+        <button type="button" id="guideBtn" class="btn-guide" title="Watch tutorial">▶ Guide / Tutorial</button>
+      </div>
     </header>
+
+    <!-- Tutorial video modal -->
+    <div id="guideModal" class="guide-modal hidden" role="dialog" aria-modal="true" aria-labelledby="guideModalTitle">
+      <div class="guide-modal-panel">
+        <div class="guide-modal-header">
+          <h3 id="guideModalTitle">ROBOTEXT GENERATOR — Tutorial</h3>
+          <button type="button" id="guideCloseBtn" class="guide-close" aria-label="Close">×</button>
+        </div>
+        <div class="guide-modal-body">
+          <video id="guideVideo" controls playsinline preload="metadata"
+            src="ROBOTEXT_GENERATOR_Tutorial_Filipino.mp4">
+            Your browser does not support video playback.
+          </video>
+        </div>
+        <p class="guide-modal-hint">Keep the video file in the same folder as this page.</p>
+      </div>
+    </div>
 
     <section class="card">
       <label for="templateSelect" class="label">Select Template</label>
@@ -1950,6 +2064,43 @@ if (document.getElementById("clearHistoryBtn")) {
 }
 
 renderHistory();
+
+// ---- Guide / Tutorial video ----
+(function () {
+  var guideBtn = document.getElementById("guideBtn");
+  var guideModal = document.getElementById("guideModal");
+  var guideVideo = document.getElementById("guideVideo");
+  var guideCloseBtn = document.getElementById("guideCloseBtn");
+  if (!guideBtn || !guideModal || !guideVideo) return;
+
+  function openGuide() {
+    guideModal.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    // Autoplay when opened
+    guideVideo.currentTime = 0;
+    var playPromise = guideVideo.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(function () {
+        // Autoplay blocked — controls still visible so user can tap play
+      });
+    }
+  }
+
+  function closeGuide() {
+    guideVideo.pause();
+    guideModal.classList.add("hidden");
+    document.body.style.overflow = "";
+  }
+
+  guideBtn.addEventListener("click", openGuide);
+  if (guideCloseBtn) guideCloseBtn.addEventListener("click", closeGuide);
+  guideModal.addEventListener("click", function (e) {
+    if (e.target === guideModal) closeGuide();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !guideModal.classList.contains("hidden")) closeGuide();
+  });
+})();
 
 </script>
 </body>
