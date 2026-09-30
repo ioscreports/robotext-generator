@@ -387,6 +387,12 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.history-desc {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 1rem;
+}
+
 .history-actions {
   display: flex;
   gap: 0.5rem;
@@ -414,28 +420,10 @@ body {
 .history-list {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-  max-height: min(65vh, 560px);
+  gap: 0.75rem;
+  max-height: min(70vh, 640px);
   overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  padding: 0.15rem 0.35rem 0.15rem 0;
-  margin-top: 0.75rem;
-  /* Visible general scrollbar for the whole Saved History list */
-  scrollbar-width: thin;
-  scrollbar-color: #94a3b8 #e2e8f0;
-}
-.history-list::-webkit-scrollbar {
-  width: 8px;
-}
-.history-list::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 999px;
-}
-.history-list::-webkit-scrollbar-track {
-  background: #e2e8f0;
-  border-radius: 999px;
+  padding-right: 2px;
 }
 
 .history-empty {
@@ -518,25 +506,23 @@ body {
 }
 
 .history-group {
-  margin-bottom: 0;
+  margin-bottom: 1.25rem;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
   background: #fff;
-  flex-shrink: 0;
 }
 .history-group-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.7rem 0.85rem;
+  padding: 0.7rem 1rem;
   background: #eff6ff;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  min-height: 2.75rem;
 }
 .history-group-header:hover {
   background: #dbeafe;
@@ -544,15 +530,14 @@ body {
 .history-group-header-left {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.5rem;
   min-width: 0;
   flex: 1;
-  overflow: hidden;
 }
 .history-group-chevron {
   flex-shrink: 0;
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 1.25rem;
+  height: 1.25rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -569,28 +554,38 @@ body {
 .history-group.collapsed .history-group-body {
   display: none;
 }
-/* Group body scrolls with the main history list (no nested max-height) */
 .history-group-body {
-  overflow: visible;
+  max-height: 280px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.history-group-body::-webkit-scrollbar {
+  width: 6px;
+}
+.history-group-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+.history-group-body::-webkit-scrollbar-track {
+  background: #f1f5f9;
 }
 .history-group-title {
   font-weight: 700;
-  font-size: 0.88rem;
+  font-size: 0.92rem;
   color: var(--primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
 .history-group-count {
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   color: var(--muted);
   background: #fff;
-  padding: 0.15rem 0.45rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 999px;
   border: 1px solid var(--border);
   flex-shrink: 0;
-  white-space: nowrap;
 }
 .history-group .history-item {
   border: none;
@@ -844,6 +839,7 @@ body {
           <button id="clearHistoryBtn" class="btn-small danger">Clear All</button>
         </div> -->
       </div>
+      <p class="history-desc">Grouped by template. One entry per store (newest keeps). Tap a group to expand or collapse. Edit to reload a record into the form.</p>
       <div id="historyList" class="history-list">
         <p class="history-empty">No saved records yet.</p>
       </div>
@@ -1005,45 +1001,7 @@ function isZeroPriceValue(val) {
   return true;
 }
 
-function getInputMetaList() {
-  var lines = TEMPLATES_DATA[currentTemplateName] || [];
-  var freeInputs = Array.from(dynamicForm.querySelectorAll('[data-role="input"]'));
-  var meta = [];
-  var freeIdx = 0;
-  lines.forEach(function (line) {
-    if (line.type !== "input") return;
-    meta.push({
-      label: line.label || "",
-      key: line.key || "",
-      inp: freeInputs[freeIdx++] || null
-    });
-  });
-  return meta;
-}
-
-/** NPD: each item block starts at an Available field */
-function getNpdGroups(meta) {
-  var groups = [];
-  var cur = null;
-  meta.forEach(function (m) {
-    if (isAvailableField(m.label)) {
-      cur = { available: m, fields: [m] };
-      groups.push(cur);
-    } else if (cur) {
-      cur.fields.push(m);
-    }
-  });
-  return groups;
-}
-
-/**
- * Static base rules (before YES/NO / Available answers).
- * Conditional rules are applied in validateForm / updateRequiredStars.
- */
 function isFieldRequired(templateName, label) {
-  // NC/OOS is never required
-  if (isNcOosField(label)) return false;
-
   var kind = getTemplateKind(templateName);
   if (kind === "availability") {
     return isYesNoLabelField(label);
@@ -1052,100 +1010,15 @@ function isFieldRequired(templateName, label) {
     return isAvailableField(label) || isRemarksField(label);
   }
   if (kind === "npd") {
-    return isAvailableField(label); // + conditional when Available = YES/NO
+    return isAvailableField(label);
   }
   if (kind === "posm") {
     return isAvailableField(label) || isRemarksField(label);
   }
   if (kind === "stickering") {
-    return true;
+    return true; // all answer fields required
   }
   return false;
-}
-
-function setLabelRequired(inp, required) {
-  if (!inp) return;
-  var field = inp.closest(".field");
-  if (!field) return;
-  var labelEl = field.querySelector("label");
-  if (!labelEl) return;
-  var star = labelEl.querySelector(".req-star");
-  if (required) {
-    if (!star) {
-      star = document.createElement("span");
-      star.className = "req-star";
-      star.style.color = "#dc2626";
-      star.textContent = " *";
-      labelEl.appendChild(star);
-    }
-  } else if (star) {
-    star.remove();
-  }
-}
-
-/** Refresh red * marks based on current YES/NO / Available answers */
-function updateRequiredStars() {
-  var tmpl = currentTemplateName || "";
-  var kind = getTemplateKind(tmpl);
-  var meta = getInputMetaList();
-
-  if (kind === "availability") {
-    var ynVal = "";
-    meta.forEach(function (m) {
-      if (isYesNoLabelField(m.label) && m.inp) {
-        ynVal = String(m.inp.value || "").trim().toUpperCase();
-      }
-    });
-    var allRequired = ynVal === "YES";
-    meta.forEach(function (m) {
-      if (!m.inp) return;
-      // NC/OOS never required
-      if (isNcOosField(m.label)) {
-        setLabelRequired(m.inp, false);
-        return;
-      }
-      if (isYesNoLabelField(m.label)) {
-        setLabelRequired(m.inp, true);
-      } else {
-        setLabelRequired(m.inp, allRequired);
-      }
-    });
-    return;
-  }
-
-  if (kind === "npd") {
-    var groups = getNpdGroups(meta);
-    groups.forEach(function (g) {
-      var availVal = g.available && g.available.inp
-        ? String(g.available.inp.value || "").trim().toUpperCase()
-        : "";
-      g.fields.forEach(function (m) {
-        if (!m.inp) return;
-        // NC/OOS never required
-        if (isNcOosField(m.label)) {
-          setLabelRequired(m.inp, false);
-          return;
-        }
-        if (isAvailableField(m.label)) {
-          setLabelRequired(m.inp, true);
-        } else if (availVal === "YES") {
-          setLabelRequired(m.inp, true);
-        } else if (availVal === "NO") {
-          setLabelRequired(m.inp, isRemarksField(m.label));
-        } else {
-          // Available not answered yet — only Available marked required
-          setLabelRequired(m.inp, false);
-        }
-      });
-    });
-    return;
-  }
-
-  // Other templates: static rules
-  meta.forEach(function (m) {
-    if (!m.inp) return;
-    setLabelRequired(m.inp, isFieldRequired(tmpl, m.label));
-  });
 }
 
 function isValidYesNo(val) {
@@ -1216,76 +1089,33 @@ function validateForm() {
   }
 
   var tmpl = currentTemplateName || "";
-  var kind = getTemplateKind(tmpl);
-  var meta = getInputMetaList();
 
-  // Build set of required input elements based on template + answers
-  var requiredSet = {};
-  function markRequired(m) {
-    // NC/OOS is never required
-    if (!m || !m.inp || isNcOosField(m.label)) return;
-    requiredSet[m.inp.getAttribute("data-key") || m.label] = m;
-  }
-
-  if (kind === "availability") {
-    var ynVal = "";
-    meta.forEach(function (m) {
-      if (isYesNoLabelField(m.label)) {
-        markRequired(m);
-        ynVal = m.inp ? String(m.inp.value || "").trim().toUpperCase() : "";
-      }
-    });
-    if (ynVal === "YES") {
-      meta.forEach(function (m) { markRequired(m); });
-    }
-  } else if (kind === "npd") {
-    getNpdGroups(meta).forEach(function (g) {
-      markRequired(g.available);
-      var availVal = g.available && g.available.inp
-        ? String(g.available.inp.value || "").trim().toUpperCase()
-        : "";
-      if (availVal === "YES") {
-        g.fields.forEach(function (m) { markRequired(m); });
-      } else if (availVal === "NO") {
-        g.fields.forEach(function (m) {
-          if (isRemarksField(m.label)) markRequired(m);
-        });
-      }
-    });
-  } else {
-    meta.forEach(function (m) {
-      if (isFieldRequired(tmpl, m.label)) markRequired(m);
-    });
-  }
-
-  meta.forEach(function (m) {
-    if (!m.inp) return;
-    var label = m.label || "This field";
-    var raw = String(m.inp.value || "").trim();
-    var key = m.inp.getAttribute("data-key") || label;
-    var required = !!requiredSet[key];
+  Array.from(dynamicForm.querySelectorAll('[data-role="input"]')).forEach(function (inp) {
+    var label = inp.getAttribute("data-label") || "This field";
+    var raw = String(inp.value || "").trim();
+    var required = isFieldRequired(tmpl, label);
 
     if (!raw) {
       if (required) {
-        fail(m.inp, label + " is required.");
+        fail(inp, label + " is required.");
       }
       return;
     }
 
     if (isNcOosField(label)) {
       if (!isValidNcOos(raw)) {
-        fail(m.inp, "Enter NC or OOS only.");
+        fail(inp, "Enter NC or OOS only.");
       } else {
-        m.inp.value = normalizeNcOos(raw);
+        inp.value = normalizeNcOos(raw);
       }
       return;
     }
 
     if (isYesNoField(label)) {
       if (!isValidYesNo(raw)) {
-        fail(m.inp, "Enter YES or NO only.");
+        fail(inp, "Enter YES or NO only.");
       } else {
-        m.inp.value = normalizeYesNo(raw);
+        inp.value = normalizeYesNo(raw);
       }
     }
   });
@@ -1373,6 +1203,7 @@ function renderForm(name) {
         '<input type="text" class="input readonly" data-role="prefilled" data-label="' + escapeHtml(line.label) + '" value="' + escapeHtml(line.value) + '" readonly />';
     } else if (line.type === "input") {
       if (isPlacementDateField(line.label)) {
+        // Optional — user may leave blank
         field.innerHTML =
           '<label>' + escapeHtml(line.label) + '</label>' +
           '<input type="date" class="input" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '" data-placement-date="1" value="" />' +
@@ -1380,6 +1211,9 @@ function renderForm(name) {
       } else {
         var ph = "Enter value...";
         var extraClass = "";
+        var requiredMark = isFieldRequired(name, line.label)
+          ? ' <span style="color:#dc2626">*</span>'
+          : "";
         if (isNcOosField(line.label)) {
           ph = "NC or OOS only";
           extraClass = " input-nc-oos";
@@ -1388,7 +1222,7 @@ function renderForm(name) {
           extraClass = " input-yes-no";
         }
         field.innerHTML =
-          '<label>' + escapeHtml(line.label) + '</label>' +
+          '<label>' + escapeHtml(line.label) + requiredMark + '</label>' +
           '<input type="text" class="input' + extraClass + '" data-role="input" data-label="' + escapeHtml(line.label) + '" data-key="' + escapeHtml(line.key) + '" placeholder="' + ph + '" />' +
           '<div class="field-error"></div>';
       }
@@ -1420,15 +1254,8 @@ function renderForm(name) {
         var fe2 = inp.closest(".field") && inp.closest(".field").querySelector(".field-error");
         if (fe2) { fe2.classList.remove("visible"); fe2.textContent = ""; }
       }
-      updateRequiredStars();
-    });
-    inp.addEventListener("input", function () {
-      updateRequiredStars();
     });
   });
-
-  // Initial required stars (static + conditional defaults)
-  updateRequiredStars();
 
   wireStoreSearch();
 }
