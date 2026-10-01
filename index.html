@@ -865,11 +865,11 @@ body {
     <section class="card">
       <div class="history-header">
         <h2 class="section-title" style="margin-bottom:0">Saved History</h2>
-<div class="history-actions">
-          <!-- <button id="expandAllHistoryBtn" class="btn-small secondary">Expand All</button> -->
+          <div class="history-actions">
+          <button id="expandAllHistoryBtn" class="btn-small secondary">Show All</button>
           <button id="collapseAllHistoryBtn" class="btn-small secondary">Hide All</button>
-<!--           <button id="exportHistoryBtn" class="btn-small secondary">Export CSV</button>
-          <button id="clearHistoryBtn" class="btn-small danger">Clear All</button> -->
+          <!-- <button id="exportHistoryBtn" class="btn-small secondary">Export CSV</button> -->
+          <!-- <button id="clearHistoryBtn" class="btn-small danger">Clear All</button> -->
         </div>
       </div>
       <!--<p class="history-desc">Grouped by template. One entry per store (newest keeps). Tap a group to expand or collapse. Edit to reload a record into the form.</p> -->
@@ -2127,7 +2127,15 @@ historyList.addEventListener("click", function (e) {
 
 if (expandAllHistoryBtn) {
   expandAllHistoryBtn.addEventListener("click", function () {
-    saveCollapsedStores({});
+    // Explicitly mark every template as expanded (false = not collapsed).
+    // Clearing the map alone does NOT work: missing keys default to collapsed.
+    const list = loadHistory();
+    const map = {};
+    list.forEach(function (rec) {
+      const key = (rec.template && String(rec.template).trim()) || "— Unknown template —";
+      map[key] = false;
+    });
+    saveCollapsedStores(map);
     renderHistory();
   });
 }
