@@ -865,12 +865,12 @@ body {
     <section class="card">
       <div class="history-header">
         <h2 class="section-title" style="margin-bottom:0">Saved History</h2>
-        <!-- <div class="history-actions">
-          <button id="expandAllHistoryBtn" class="btn-small secondary">Expand All</button>
-          <button id="collapseAllHistoryBtn" class="btn-small secondary">Collapse All</button>
-          <button id="exportHistoryBtn" class="btn-small secondary">Export CSV</button>
-          <button id="clearHistoryBtn" class="btn-small danger">Clear All</button>
-        </div> -->
+<div class="history-actions">
+          <!-- <button id="expandAllHistoryBtn" class="btn-small secondary">Expand All</button> -->
+          <button id="collapseAllHistoryBtn" class="btn-small secondary">Hide All</button>
+<!--           <button id="exportHistoryBtn" class="btn-small secondary">Export CSV</button>
+          <button id="clearHistoryBtn" class="btn-small danger">Clear All</button> -->
+        </div>
       </div>
       <!--<p class="history-desc">Grouped by template. One entry per store (newest keeps). Tap a group to expand or collapse. Edit to reload a record into the form.</p> -->
       <div id="historyList" class="history-list">
@@ -1739,12 +1739,22 @@ function shareText(text, files) {
   }
 }
 
+var SHARE_DELAY_MS = 3000; // wait before opening WhatsApp so database save can start
+
 function doShareFromOutput() {
   const text = outputText.value;
   if (!text) return;
+  if (shareBtn && shareBtn.disabled) return;
+
   var photoFiles = selectedPhotos.map(function (p) { return p.file; }).filter(Boolean);
   var record = getCurrentRecord(text || "");
-  // Share = open WhatsApp + save to database (Google Sheet)
+
+  // Start database save immediately, then wait before opening WhatsApp
+  if (shareBtn) {
+    shareBtn.disabled = true;
+    shareBtn.textContent = "Sharing…";
+  }
+
   var prep = photoFiles.length
     ? Promise.all(photoFiles.slice(0, 5).map(function (f) { return compressImageToBase64(f, 1280, 0.7); }))
     : Promise.resolve([]);
@@ -1755,7 +1765,14 @@ function doShareFromOutput() {
     record.photos = [];
     pushToCloud(record, photoFiles, "Saving text");
   });
-  shareText(text || "", photoFiles);
+
+  setTimeout(function () {
+    if (shareBtn) {
+      shareBtn.disabled = false;
+      shareBtn.textContent = "💬 Share";
+    }
+    shareText(text || "", photoFiles);
+  }, SHARE_DELAY_MS);
 }
 
 if (shareBtn) {
@@ -2080,6 +2097,7 @@ historyList.addEventListener("click", function (e) {
   if (!rec) return;
 
   if (action === "share") {
+    if (btn.disabled) return;
     var filesH = [];
     if (rec.photos && rec.photos.length) {
       rec.photos.forEach(function (ph) {
@@ -2087,9 +2105,16 @@ historyList.addEventListener("click", function (e) {
         if (f) filesH.push(f);
       });
     }
-    // History Share also saves to the database (Google Sheet)
+    // Start database save, wait, then open WhatsApp
+    btn.disabled = true;
+    var prevLabel = btn.textContent;
+    btn.textContent = "Sharing…";
     pushToCloud(rec, filesH, "Saving text" + (filesH.length ? " + photos" : ""));
-    shareText(rec.text || "", filesH);
+    setTimeout(function () {
+      btn.disabled = false;
+      btn.textContent = prevLabel;
+      shareText(rec.text || "", filesH);
+    }, SHARE_DELAY_MS);
   } else if (action === "edit") {
     editHistoryRecord(rec);
   } else if (action === "delete") {
