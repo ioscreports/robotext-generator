@@ -1702,7 +1702,7 @@ function shareText(text, files) {
   // Prefer system share with files when available (user can pick WhatsApp)
   // Always also open WhatsApp text link as reliable text delivery
   function openWhatsAppText() {
-    window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
+    window.open("https://api.whatsapp.com/?text=" + encodeURIComponent(text), "_blank");
   }
 
   if (files.length && typeof navigator.share === "function") {
